@@ -7,11 +7,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -20,90 +20,72 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AccountBalanceWallet
+import androidx.compose.material.icons.automirrored.filled.Backspace
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material3.Icon
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.hilt.navigation.compose.hiltViewModel
 import androidx.navigation.NavHostController
+import com.example.practise.data.local.entity.TransactionEntity
 import com.example.practise.presentation.screens.Home.util.HomeHeader
+import java.math.BigDecimal
+import java.text.DecimalFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 private val HomeBlue = Color(0xFF087FF5)
 private val HistoryBackground = Color(0xFFF4F6F8)
 private val PrimaryText = Color(0xFF263B50)
 private val MutedText = Color(0xFF929BA4)
-private val InflowColor = Color(0xFF59D876)
-private val InflowBackground = Color(0xFFE7F9EB)
-private val OutflowColor = Color(0xFFFF8B7C)
-private val OutflowBackground = Color(0xFFFFEFEC)
 private val KeypadBackground = Color(0xFF092A45)
 private val KeyBackground = Color(0xFF29435A)
 private val ConfirmGreen = Color(0xFF36D66B)
 private val DeleteRed = Color(0xFFFF5947)
 
-private data class CurrencyOption(val code: String, val symbol: String)
-
-private val depositCurrencies = listOf(
-    CurrencyOption("USD", "$"),
-    CurrencyOption("INR", "₹"),
-    CurrencyOption("EUR", "€"),
-    CurrencyOption("GBP", "£")
-)
-
-private data class Transaction(
-    val id: String,
-    val date: String,
-    val amount: String,
-    val isInflow: Boolean,
-    val sourceAmount: String? = null
-)
-
-private val transactions = listOf(
-    Transaction("ID21W234R3", "12 Apr 2024", "$24", isInflow = true),
-    Transaction("ID213EE30", "11 Apr 2024", "₹ 11,452", isInflow = false, sourceAmount = "$12"),
-    Transaction("ID21334R3", "2 Apr 2024", "$46", isInflow = true),
-    Transaction("ID2132R42", "23 Mar 2024", "$21", isInflow = true),
-    Transaction("ID213EE30", "11 Mar 2024", "₹ 8023", isInflow = false, sourceAmount = "$32"),
-    Transaction("ID21W234R3", "8 Mar 2024", "$24", isInflow = true),
-    Transaction("ID2132R42", "2 Mar 2024", "₹ 7,895", isInflow = false, sourceAmount = "$18"),
-    Transaction("ID21334R3", "24 Feb 2024", "$46", isInflow = true),
-    Transaction("ID21W234R3", "12 Apr 2024", "$24", isInflow = true),
-    Transaction("ID213EE30", "11 Apr 2024", "₹ 11,452", isInflow = false, sourceAmount = "$12"),
-    Transaction("ID21334R3", "2 Apr 2024", "$46", isInflow = true),
-    Transaction("ID2132R42", "23 Mar 2024", "$21", isInflow = true),
-    Transaction("ID213EE30", "11 Mar 2024", "₹ 8023", isInflow = false, sourceAmount = "$32"),
-    Transaction("ID21W234R3", "8 Mar 2024", "$24", isInflow = true),
-    Transaction("ID2132R42", "2 Mar 2024", "₹ 7,895", isInflow = false, sourceAmount = "$18"),
-    Transaction("ID21334R3", "24 Feb 2024", "$46", isInflow = true)
-
-)
+private enum class OperationType {
+    DEPOSIT,
+    WITHDRAWAL
+}
 
 @Composable
 fun HomeScreen(
     navHost: NavHostController,
-    paddingValues: PaddingValues
+    paddingValues: PaddingValues,
+    viewModel: HomeViewModel = hiltViewModel()
 ) {
-    var showDepositKeypad by remember { mutableStateOf(false) }
-    var depositAmount by remember { mutableStateOf("0") }
-    var selectedCurrency by remember { mutableStateOf(depositCurrencies.first()) }
+    val uiState by viewModel.uiState.collectAsState()
+    var activeOperation by remember { mutableStateOf<OperationType?>(null) }
+    var amount by remember { mutableStateOf("0") }
+    var selectedCurrency by remember { mutableStateOf("") }
+
+    LaunchedEffect(uiState.operationCompleted) {
+        if (uiState.operationCompleted) {
+            activeOperation = null
+            amount = "0"
+            viewModel.clearOperationCompleted()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -111,12 +93,21 @@ fun HomeScreen(
             .background(HomeBlue)
     ) {
         HomeHeader(
-            balance = "₹ 24,224.90",
+            balance = "₹ ${uiState.balanceInInr.formatAmount(2)}",
             onWithdrawClick = {
-                // TODO
+                amount = "0"
+                viewModel.clearError()
+                activeOperation = OperationType.WITHDRAWAL
             },
             onDepositClick = {
-                showDepositKeypad = true
+                amount = "0"
+                selectedCurrency = if ("USD" in uiState.supportedCurrencies) {
+                    "USD"
+                } else {
+                    uiState.supportedCurrencies.firstOrNull().orEmpty()
+                }
+                viewModel.clearError()
+                activeOperation = OperationType.DEPOSIT
             }
         )
 
@@ -150,23 +141,60 @@ fun HomeScreen(
                     )
                 }
             }
-            items(transactions) { transaction ->
-                TransactionCard(transaction)
+
+            if (uiState.transactions.isEmpty()) {
+                item {
+                    Text(
+                        text = "Transaction history will appear here.",
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 20.dp),
+                        color = MutedText,
+                        fontSize = 13.sp
+                    )
+                }
+            } else {
+                items(uiState.transactions) { tx ->
+                    TransactionItem(tx)
+                }
             }
         }
     }
 
-    if (showDepositKeypad) {
+    activeOperation?.let { operation ->
         Dialog(
-            onDismissRequest = { showDepositKeypad = false },
+            onDismissRequest = {
+                if (!uiState.isProcessingOperation) {
+                    activeOperation = null
+                    viewModel.clearError()
+                }
+            },
             properties = DialogProperties(usePlatformDefaultWidth = false)
         ) {
-            DepositKeypad(
-                amount = depositAmount,
+            AmountKeypad(
+                operation = operation,
+                amount = amount,
                 currency = selectedCurrency,
-                onCurrencySelected = { selectedCurrency = it },
-                onAmountChanged = { depositAmount = it },
-                onConfirm = { showDepositKeypad = false },
+                supportedCurrencies = uiState.supportedCurrencies,
+                isLoadingCurrencies = uiState.isLoadingCurrencies,
+                isProcessing = uiState.isProcessingOperation,
+                errorMessage = uiState.errorMessage,
+                onCurrencySelected = {
+                    selectedCurrency = it
+                    viewModel.clearError()
+                },
+                onAmountChanged = {
+                    amount = it
+                    viewModel.clearError()
+                },
+                onRetryCurrencies = viewModel::loadSupportedCurrencies,
+                onConfirm = {
+                    if (operation == OperationType.DEPOSIT) {
+                        viewModel.deposit(amount, selectedCurrency)
+                    } else {
+                        viewModel.withdraw(amount)
+                    }
+                },
                 modifier = Modifier
                     .fillMaxWidth()
                     .widthIn(max = 360.dp)
@@ -177,15 +205,59 @@ fun HomeScreen(
 }
 
 @Composable
-private fun DepositKeypad(
+private fun TransactionItem(tx: TransactionEntity) {
+    val isDeposit = tx.type == "DEPOSIT"
+    val amountColor = if (isDeposit) Color(0xFF10B981) else Color(0xFFEF4444)
+    val sign = if (isDeposit) "+" else "-"
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.White)
+            .padding(12.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = tx.title,
+                color = PrimaryText,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date(tx.timestamp)),
+                color = MutedText,
+                fontSize = 11.sp
+            )
+        }
+        Text(
+            text = "$sign ₹ ${BigDecimal(tx.inrAmount).formatAmount(2)}",
+            color = amountColor,
+            fontSize = 14.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun AmountKeypad(
+    operation: OperationType,
     amount: String,
-    currency: CurrencyOption,
-    onCurrencySelected: (CurrencyOption) -> Unit,
+    currency: String,
+    supportedCurrencies: List<String>,
+    isLoadingCurrencies: Boolean,
+    isProcessing: Boolean,
+    errorMessage: String?,
+    onCurrencySelected: (String) -> Unit,
     onAmountChanged: (String) -> Unit,
+    onRetryCurrencies: () -> Unit,
     onConfirm: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     var currencyMenuExpanded by remember { mutableStateOf(false) }
+    val deposit = operation == OperationType.DEPOSIT
 
     Column(
         modifier = modifier
@@ -206,25 +278,41 @@ private fun DepositKeypad(
                     .fillMaxHeight()
                     .clip(RoundedCornerShape(12.dp))
                     .background(HomeBlue)
-                    .clickable { currencyMenuExpanded = true }
+                    .clickable(enabled = deposit && !isLoadingCurrencies) {
+                        currencyMenuExpanded = true
+                    }
                     .padding(horizontal = 8.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "${currency.symbol}  ▾",
-                    color = Color.White,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                if (deposit && isLoadingCurrencies && supportedCurrencies.isEmpty()) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(19.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Text(
+                        text = if (deposit) {
+                            "${currency.currencySymbol()}  ▾"
+                        } else {
+                            "₹  INR"
+                        },
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 DropdownMenu(
                     expanded = currencyMenuExpanded,
-                    onDismissRequest = { currencyMenuExpanded = false }
+                    onDismissRequest = { currencyMenuExpanded = false },
+                    modifier = Modifier.heightIn(max = 320.dp)
                 ) {
-                    depositCurrencies.forEach { option ->
+                    supportedCurrencies.forEach { code ->
                         DropdownMenuItem(
-                            text = { Text("${option.symbol}  ${option.code}") },
+                            text = { Text("${code.currencySymbol()}  $code") },
                             onClick = {
-                                onCurrencySelected(option)
+                                onCurrencySelected(code)
                                 currencyMenuExpanded = false
                             }
                         )
@@ -257,14 +345,15 @@ private fun DepositKeypad(
                 modifier = Modifier.weight(3f),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                KeypadKeyRow(amount, listOf("7", "8", "9"), onAmountChanged)
-                KeypadKeyRow(amount, listOf("4", "5", "6"), onAmountChanged)
+                KeypadKeyRow(amount, listOf("7", "8", "9"), onAmountChanged, isProcessing)
+                KeypadKeyRow(amount, listOf("4", "5", "6"), onAmountChanged, isProcessing)
             }
             KeypadKey(
                 label = "AC",
                 modifier = Modifier
                     .weight(1f)
                     .height(110.dp),
+                enabled = !isProcessing,
                 onClick = { onAmountChanged("0") }
             )
         }
@@ -277,7 +366,8 @@ private fun DepositKeypad(
                 KeypadKey(
                     label = digit,
                     modifier = Modifier.weight(1f),
-                    onClick = { appendAmount(amount, digit, onAmountChanged) }
+                    enabled = !isProcessing,
+                    onClick = { onAmountChanged(amount.appendKey(digit)) }
                 )
             }
             Box(
@@ -286,7 +376,7 @@ private fun DepositKeypad(
                     .height(50.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(DeleteRed)
-                    .clickable {
+                    .clickable(enabled = !isProcessing) {
                         onAmountChanged(amount.dropLast(1).ifEmpty { "0" })
                     },
                 contentAlignment = Alignment.Center
@@ -308,7 +398,8 @@ private fun DepositKeypad(
                 KeypadKey(
                     label = value,
                     modifier = Modifier.weight(1f),
-                    onClick = { appendAmount(amount, value, onAmountChanged) }
+                    enabled = !isProcessing,
+                    onClick = { onAmountChanged(amount.appendKey(value)) }
                 )
             }
             Box(
@@ -316,21 +407,59 @@ private fun DepositKeypad(
                     .weight(1f)
                     .height(50.dp)
                     .clip(CircleShape)
-                    .background(ConfirmGreen)
-                    .clickable {
-                        if ((amount.toDoubleOrNull() ?: 0.0) > 0.0) {
-                            onConfirm()
-                        }
-                    },
+                    .background(if (isProcessing) ConfirmGreen.copy(alpha = 0.5f) else ConfirmGreen)
+                    .clickable(enabled = !isProcessing, onClick = onConfirm),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Check,
-                    contentDescription = "Confirm deposit amount",
-                    modifier = Modifier.size(22.dp),
-                    tint = Color.White
+                if (isProcessing) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(22.dp),
+                        color = Color.White,
+                        strokeWidth = 2.dp
+                    )
+                } else {
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = "Confirm ${operation.name.lowercase()}",
+                        modifier = Modifier.size(22.dp),
+                        tint = Color.White
+                    )
+                }
+            }
+        }
+
+        if (errorMessage != null) {
+            Text(
+                text = errorMessage,
+                color = Color(0xFFFFC6BE),
+                fontSize = 12.sp
+            )
+            if (deposit && supportedCurrencies.isEmpty() && !isLoadingCurrencies) {
+                Text(
+                    text = "Retry loading currencies",
+                    modifier = Modifier
+                        .clickable(onClick = onRetryCurrencies)
+                        .padding(vertical = 3.dp),
+                    color = Color.White,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold
                 )
             }
+        } else if (deposit && supportedCurrencies.isEmpty() && !isLoadingCurrencies) {
+            Text(
+                text = "Currency list unavailable.",
+                color = Color(0xFFFFC6BE),
+                fontSize = 12.sp
+            )
+            Text(
+                text = "Retry loading currencies",
+                modifier = Modifier
+                    .clickable(onClick = onRetryCurrencies)
+                    .padding(vertical = 3.dp),
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold
+            )
         }
     }
 }
@@ -339,7 +468,8 @@ private fun DepositKeypad(
 private fun KeypadKeyRow(
     amount: String,
     labels: List<String>,
-    onAmountChanged: (String) -> Unit
+    onAmountChanged: (String) -> Unit,
+    isProcessing: Boolean
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -349,7 +479,8 @@ private fun KeypadKeyRow(
             KeypadKey(
                 label = label,
                 modifier = Modifier.weight(1f),
-                onClick = { appendAmount(amount, label, onAmountChanged) }
+                enabled = !isProcessing,
+                onClick = { onAmountChanged(amount.appendKey(label)) }
             )
         }
     }
@@ -359,14 +490,15 @@ private fun KeypadKeyRow(
 private fun KeypadKey(
     label: String,
     modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Box(
         modifier = modifier
             .height(50.dp)
             .clip(RoundedCornerShape(12.dp))
-            .background(KeyBackground)
-            .clickable(onClick = onClick),
+            .background(KeyBackground.copy(alpha = if (enabled) 1f else 0.5f))
+            .clickable(enabled = enabled, onClick = onClick),
         contentAlignment = Alignment.Center
     ) {
         Text(
@@ -378,102 +510,34 @@ private fun KeypadKey(
     }
 }
 
-private fun appendAmount(
-    currentAmount: String,
-    value: String,
-    onAmountChanged: (String) -> Unit
-) {
+private fun String.appendKey(value: String): String {
     if (value == ".") {
-        if (!currentAmount.contains('.')) {
-            onAmountChanged("$currentAmount.")
-        }
-        return
+        return if (contains('.')) this else if (this == "0") "0." else "$this."
     }
 
-    val fractionalDigits = currentAmount.substringAfter('.', "")
-    if (currentAmount.contains('.') && fractionalDigits.length >= 2) return
-
-    val updatedAmount = when {
-        currentAmount == "0" && value == "00" -> "0"
-        currentAmount == "0" -> value
-        else -> currentAmount + value
+    val fraction = substringAfter('.', "")
+    if (contains('.') && fraction.length >= 2) return this
+    if (!contains('.') && trimStart('0').length >= 12) return this
+    return when {
+        this == "0" && value == "00" -> "0"
+        this == "0" -> value
+        else -> this + value
     }
-    onAmountChanged(updatedAmount)
 }
 
-@Composable
-private fun TransactionCard(transaction: Transaction) {
-    val iconColor = if (transaction.isInflow) InflowColor else OutflowColor
-    val iconBackground = if (transaction.isInflow) InflowBackground else OutflowBackground
+private fun String.currencySymbol(): String = when (uppercase(Locale.ROOT)) {
+    "INR" -> "₹"
+    "USD" -> "$"
+    "EUR" -> "€"
+    "GBP" -> "£"
+    "JPY" -> "¥"
+    "CNY" -> "¥"
+    "AUD" -> "A$"
+    "CAD" -> "C$"
+    else -> this
+}
 
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(62.dp)
-            .shadow(2.dp, RoundedCornerShape(14.dp))
-            .clip(RoundedCornerShape(14.dp))
-            .background(Color.White)
-            .padding(horizontal = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Box(
-            modifier = Modifier
-                .size(31.dp)
-                .clip(CircleShape)
-                .background(iconBackground),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = Icons.Default.AccountBalanceWallet,
-                contentDescription = if (transaction.isInflow) "Money received" else "Money sent",
-                modifier = Modifier.size(16.dp),
-                tint = iconColor
-            )
-        }
-
-        Spacer(modifier = Modifier.width(10.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = transaction.id,
-                color = PrimaryText,
-                fontSize = 12.sp,
-                fontWeight = FontWeight.Bold,
-                lineHeight = 15.sp
-            )
-            Text(
-                text = transaction.date,
-                color = MutedText,
-                fontSize = 9.sp,
-                lineHeight = 12.sp
-            )
-        }
-
-        Column(horizontalAlignment = Alignment.End) {
-            transaction.sourceAmount?.let { sourceAmount ->
-                Text(
-                    text = sourceAmount,
-                    color = MutedText,
-                    fontSize = 9.sp,
-                    lineHeight = 12.sp
-                )
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                if (transaction.sourceAmount != null) {
-                    Text(
-                        text = "⇄",
-                        color = MutedText,
-                        fontSize = 11.sp
-                    )
-                    Spacer(modifier = Modifier.width(3.dp))
-                }
-                Text(
-                    text = transaction.amount,
-                    color = PrimaryText,
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    lineHeight = 18.sp
-                )
-            }
-        }
-    }
+private fun BigDecimal.formatAmount(minimumFractionDigits: Int = 0): String {
+    val pattern = if (minimumFractionDigits == 2) "#,##0.00" else "#,##0.##"
+    return DecimalFormat(pattern).format(this)
 }
