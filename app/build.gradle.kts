@@ -1,9 +1,8 @@
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
-
-    id ("dagger.hilt.android.plugin")
-    id("com.google.devtools.ksp")
+    alias(libs.plugins.hilt.android)
+    alias(libs.plugins.ksp)
     id("kotlin-parcelize")
 }
 
@@ -67,12 +66,10 @@ dependencies {
     implementation("androidx.compose.material:material-icons-extended")
 
 
-    //Dagger - Hilt
-    implementation ("com.google.dagger:hilt-android:2.60.1")
-    implementation ("androidx.hilt:hilt-navigation-compose:1.2.0")
-
-    ksp("androidx.hilt:hilt-compiler:1.4.0")
-    ksp("com.google.dagger:hilt-compiler:2.56.2")
+    // Hilt
+    implementation(libs.hilt.android)
+    implementation(libs.hilt.navigation.compose)
+    ksp(libs.hilt.compiler)
 
 
     //Room Database
@@ -81,10 +78,10 @@ dependencies {
     implementation ("androidx.room:room-ktx:2.8.5")
 
 
-    //Retrofit2
-    implementation ("com.squareup.retrofit2:converter-gson:3.0.0")
-    implementation ("com.squareup.retrofit2:retrofit:3.0.0")
-    implementation ("com.squareup.okhttp3:okhttp:5.5.0")
+    // Retrofit
+    implementation(libs.retrofit)
+    implementation(libs.retrofit.converter.gson)
+    implementation(libs.okhttp)
     implementation ("com.squareup.retrofit2:converter-scalars:3.0.0")
     implementation ("com.squareup.okhttp3:logging-interceptor:5.5.0")
 
